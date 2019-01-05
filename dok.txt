@@ -1,0 +1,6 @@
+* lista modyfikowanych plików systemowych:
+
+/usr/src/mm/proto.h
+/usr/src/mm/alloc.c
+/usr/src/mm/table.c
+/usr/include/minix/callnr.h
