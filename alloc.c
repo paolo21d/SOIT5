@@ -40,6 +40,8 @@ PRIVATE struct mproc *in_queue;	/* queue of processes wanting to swap in */
 PRIVATE struct mproc *outswap = &mproc[LOW_USER];  /* outswap candidate? */
 
 PRIVATE int worstFit=0;
+/*enum algEnum {WORST_FIT, FIRST_FIT};
+PRIVATE enum algEnum alg = FIRST_FIT; */
 
 FORWARD _PROTOTYPE( void del_slot, (struct hole *prev_ptr, struct hole *hp) );
 FORWARD _PROTOTYPE( void merge, (struct hole *hp)			    );
@@ -60,72 +62,60 @@ phys_clicks clicks;		/* amount of memory requested */
 
 	register struct hole *hp, *prev_ptr;
   	phys_clicks old_base;
-	if(worstFit==0)
+	if(worstFit==0) /*alg. First Fit - algorytm oryginalny*/
 	{
 	    do{
-		hp = hole_head;
-		while (hp != NIL_HOLE && hp->h_base < swap_base) 
-		{
-			if (hp->h_len >= clicks) 
+			hp = hole_head;
+			while (hp != NIL_HOLE && hp->h_base < swap_base) 
 			{
-				/* We found a hole that is big enough.  Use it. */
-				old_base = hp->h_base;	/* remember where it started */
-				hp->h_base += clicks;	/* bite a piece off */
-				hp->h_len -= clicks;	/* ditto */
-	
-				/* Delete the hole if used up completely. */
-				if (hp->h_len == 0) del_slot(prev_ptr, hp);
-	
-				/* Return the start address of the acquired block. */
-				return(old_base);
+				if (hp->h_len >= clicks) 
+				{
+					/* We found a hole that is big enough.  Use it. */
+					old_base = hp->h_base;	/* remember where it started */
+					hp->h_base += clicks;	/* bite a piece off */
+					hp->h_len -= clicks;	/* ditto */
+		
+					/* Delete the hole if used up completely. */
+					if (hp->h_len == 0) del_slot(prev_ptr, hp);
+		
+					/* Return the start address of the acquired block. */
+					return(old_base);
+				}
+				prev_ptr = hp;
+				hp = hp->h_next;
 			}
-			prev_ptr = hp;
-			hp = hp->h_next;
-		}
 	    }while(swap_out());
 	}
-	else
+	else /*alg. Worst Fit - algorytm napisany*/
 	{
-	    
 		register struct hole * max_hole, * prev_max_hole;
-		/*do {*/
-		hp=hole_head;	
-		if(hp!=NIL_HOLE)
-		{
-			max_hole=hp;
-			prev_max_hole=NIL_HOLE;
-		}
-		else 
-			return(NO_MEM);
-
-		/* wyszukiwanie najwiekszej dziury */
-		while(hp!=NIL_HOLE && hp->h_base < swap_base)
-		{
-			if(hp->h_len>max_hole->h_len)
-			{
+		do {
+			hp=hole_head;	
+			if(hp!=NIL_HOLE) {
 				max_hole=hp;
-				prev_max_hole=prev_ptr;
+				prev_max_hole=NIL_HOLE;
 			}
-			prev_ptr=hp;
-			hp=hp->h_next;
-		}
-		/* najwieksza dziura wskazywana jest przez max_hole */
-		if(max_hole->h_len >= clicks)
-		{
-		
-				/* We found a hole that is big enough.  Use it. */
-				old_base = max_hole->h_base;	/* remember where it started */
-				max_hole->h_base += clicks;	/* bite a piece off */
-				max_hole->h_len -= clicks;	/* ditto */
-	
-				/* Delete the hole if used up completely. */
-				if (max_hole->h_len == 0 && prev_max_hole!=NIL_HOLE) del_slot(prev_max_hole, max_hole);
-	
-				/* Return the start address of the acquired block. */
-				return(old_base);
+			else 
+				return(NO_MEM);
 
-		}
-	     /* } while (swap_out());		 try to swap some other process out */	    
+			/* wyszukiwanie najwiekszej dziury */
+			while(hp!=NIL_HOLE && hp->h_base < swap_base) {
+				if(hp->h_len>max_hole->h_len) {
+					max_hole=hp;
+					prev_max_hole=prev_ptr;
+				}
+				prev_ptr=hp;
+				hp=hp->h_next;
+			}
+			/* najwieksza dziura wskazywana jest przez max_hole */
+			if(max_hole->h_len >= clicks) {
+					old_base = max_hole->h_base;	/* remember where it started */
+					max_hole->h_base += clicks;	/* bite a piece off */
+					max_hole->h_len -= clicks;	/* ditto */
+					if (max_hole->h_len == 0 && prev_max_hole!=NIL_HOLE) del_slot(prev_max_hole, max_hole);
+					return(old_base);
+			}
+	    } while (swap_out());		/* try to swap some other process out */	    
 	}
   return(NO_MEM);
 }
@@ -463,7 +453,7 @@ PRIVATE int swap_out()
 
 int do_hole_map()
 {
-	unsigned int num=mm_in.m1_i1; 
+	/*unsigned int num=mm_in.m1_i1; 
 	phys_clicks buffer[1024];
 	int number=num/2;
 	char * usr_buff=mm_in.m1_p1;
@@ -488,20 +478,42 @@ int do_hole_map()
 	}while(hp!=NIL_HOLE && hp->h_base < swap_base && number>0);
 	buffer[i]=0;
 	number++;
-	/* kopiowanie SRC_pid, SRC_type, SRC_buffer, DST_pid, DST_type, DST_buffer, nbytes  */
 	sys_copy(0,D,(phys_bytes)buffer, usr_pid,D,(phys_bytes)usr_buff,nbytes);
 
-	return num-number;
+	return num-number;*/
+	
+	phys_clicks counter = mm_in.m1_i1/(sizeof(phys_clicks) * 2);/*liczba miejsc do wypelnienia*/
+	phys_clicks buffer[NR_HOLES * 2 + 1]; /* n * (rozmiar + adres) + 0 */
+	phys_clicks i = 0;	/*licznik liczby par */
+	register struct hole *hp = hole_head;
 
+	while(hp!=NIL_HOLE && hp->h_base < swap_base && i < counter) 
+	{
+		buffer[i] = hp->h_len;
+		++i;
+		buffer[i] = hp->h_base;
+		++i;
+
+		hp = hp->h_next;
+	}
+	buffer[i] = 0; /*ostatni element*/
+	i = i/2;	/*potrzebna ilosc par, trzeba podzielic przez 2*/
+	
+	sys_copy(MM_PROC_NR, D, (phys_clicks)buffer, who, D, (phys_clicks) mm_in.m1_p1, (phys_clicks) mm_in.m1_i1);
+	return i; 
 }
 
 
 int do_worst_fit()
 {
-	
-/*	printf("do_worst_fit arg -> [%d]\n",mm_in.m1_i1);*/
-	if(mm_in.m1_i1==0 || mm_in.m1_i1==1)
-		worstFit=mm_in.m1_i1;
+	if(mm_in.m1_i1==0) /*pick First Fit*/{
+		/*alg = FIRST_FIT;*/
+		worstFit = 0;
+	}
+	else if(mm_in.m1_i1==1) /*pick Worst Fit*/{
+		/*alg = WORST_FIT;*/
+		worstFit = 1;
+	}
 	return mm_in.m1_i1;
 }
 
